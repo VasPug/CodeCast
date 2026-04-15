@@ -162,10 +162,8 @@ export default function Page() {
         />
       )}
 
-      {phase.kind === "analyzing" && <Status label="Reading your code and writing the script…" />}
-
-      {phase.kind === "synthesizing" && (
-        <Status label={`Synthesizing voices — ${phase.done} of ${phase.total} turns done`} />
+      {(phase.kind === "analyzing" || phase.kind === "synthesizing") && (
+        <Status phase={phase} />
       )}
 
       {phase.kind === "error" && (
@@ -467,15 +465,80 @@ async function walkEntry(entry: FsEntry, prefix: string, out: PickedFile[]): Pro
   }
 }
 
-function Status({ label }: { label: string }) {
+type StepKey = "reading" | "writing" | "narrating";
+type StepState = "done" | "active" | "pending";
+
+function Status({ phase }: { phase: Phase }) {
+  const [analyzingStep, setAnalyzingStep] = useState<"reading" | "writing">("reading");
+
+  useEffect(() => {
+    if (phase.kind !== "analyzing") return;
+    setAnalyzingStep("reading");
+    const t = setTimeout(() => setAnalyzingStep("writing"), 3500);
+    return () => clearTimeout(t);
+  }, [phase.kind]);
+
+  const steps: { key: StepKey; label: string; state: StepState }[] = (() => {
+    if (phase.kind === "analyzing") {
+      return [
+        { key: "reading", label: "Reading your code", state: analyzingStep === "reading" ? "active" : "done" },
+        { key: "writing", label: "Writing the script", state: analyzingStep === "writing" ? "active" : "pending" },
+        { key: "narrating", label: "Narrating the script", state: "pending" },
+      ];
+    }
+    return [
+      { key: "reading", label: "Reading your code", state: "done" },
+      { key: "writing", label: "Writing the script", state: "done" },
+      { key: "narrating", label: "Narrating the script", state: "active" },
+    ];
+  })();
+
+  const active = steps.find((s) => s.state === "active");
+  const headline =
+    phase.kind === "synthesizing"
+      ? `Narrating the script — voice ${Math.min(phase.done + 1, phase.total)} of ${phase.total}`
+      : `${active?.label ?? ""}…`;
+
   return (
     <div style={{ flex: 1, display: "grid", placeItems: "center", padding: 32 }}>
-      <div style={{ textAlign: "center" }}>
+      <div style={{ textAlign: "center", minWidth: 280 }}>
         <div className="spinner" style={spinnerStyle} />
-        <div style={{ color: "#9aa3ad", marginTop: 16 }}>{label}</div>
+        <div style={{ color: "#e6e8eb", marginTop: 20, fontSize: 16 }}>{headline}</div>
+
+        <ol style={stepListStyle}>
+          {steps.map((s) => (
+            <li key={s.key} style={{ ...stepItemStyle, opacity: s.state === "pending" ? 0.4 : 1 }}>
+              <StepIcon state={s.state} />
+              <span style={{ color: s.state === "active" ? "#e6e8eb" : "#9aa3ad" }}>{s.label}</span>
+            </li>
+          ))}
+        </ol>
+
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
+  );
+}
+
+function StepIcon({ state }: { state: StepState }) {
+  if (state === "done") {
+    return (
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+        <path d="M20 6 9 17l-5-5" stroke="#6ee7b7" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (state === "active") {
+    return (
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+        <circle cx="12" cy="12" r="5" fill="#4f46e5" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <circle cx="12" cy="12" r="5" fill="none" stroke="#3a3f47" strokeWidth="2" />
+    </svg>
   );
 }
 
@@ -996,4 +1059,23 @@ const spinnerStyle: React.CSSProperties = {
   borderRadius: "50%",
   animation: "spin 800ms linear infinite",
   margin: "0 auto",
+};
+
+const stepListStyle: React.CSSProperties = {
+  listStyle: "none",
+  padding: 0,
+  margin: "28px auto 0",
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+  textAlign: "left",
+  maxWidth: 240,
+};
+
+const stepItemStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  fontSize: 14,
+  transition: "opacity 200ms ease",
 };
